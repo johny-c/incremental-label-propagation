@@ -1,0 +1,19 @@
+KITTI_FEATURES:
+  name : KITTI_FEATURES
+  test_size : 9090
+
+
+BLOBS:
+  name : BLOBS
+  pca : True
+  test_size : 0.0
+
+
+MNIST:
+  name : MNIST
+  test_size : 10000
+
+
+USPS:
+  name : USPS
+  test_size : 2007

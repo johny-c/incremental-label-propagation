@@ -1,0 +1,31 @@
+data:
+  burn_in:
+    n_labeled_per_class : 2
+    ratio_labeled : 0.5
+  stream:
+    ratio_labeled : 0.05
+    batch_size : 100
+  max_samples : 1000000
+
+
+offline_lp:
+  tol : 0.001
+  max_iter : 30
+
+
+online_lp:
+  tol : 0.001
+  max_iter : 30
+  theta : 0.3
+  iprint : 100
+
+
+graph:
+  kernel : knn
+  n_neighbors_labeled : [1, 3, 7, 11, 15, 19]
+  n_neighbors_unlabeled : 3
+
+
+options:
+  precision : float64
+  iter_stats : 100
