@@ -16,7 +16,7 @@ from ilp.algo.incremental_label_prop import IncrementalLabelPropagation
 from ilp.algo.datastore import SemiLabeledDataStore
 from ilp.helpers.data_flow import gen_semilabeled_data, split_labels_rest, split_burn_in_rest
 from ilp.helpers.params_parse import print_config
-from ilp.helpers.log import create_logger
+from ilp.helpers.log import make_logger
 
 
 class BaseExperiment(six.with_metaclass(ABCMeta)):
@@ -38,7 +38,7 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
         self.class_dir = os.path.join(RESULTS_DIR, self.name)
         instance_dir = self.name + '_' + self.dataset.upper() + '_' + cur_time
         self.top_dir = os.path.join(self.class_dir, instance_dir)
-        self.logger = create_logger(__name__)
+        self.logger = make_logger(__name__)
 
     def run(self, dataset_name, random_state=42):
 
@@ -95,7 +95,7 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
                        X_test, y_test, n_run):
         raise NotImplementedError('pre_single_run must be overriden!')
 
-    def _single_run(self, X, y, mask_labeled, n_burn_in, stats_file,
+    def _single_run(self, X, y, mask_labeled, n_burn_in, stats_path,
                     random_state, X_test=None, y_test=None):
 
         lb = LabelBinarizer()
@@ -119,8 +119,8 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
                             'max_samples': len(y),
                             'max_labeled': sum(mask_labeled),
                             'classes': lb.classes_}
-        learner = self.init_learner(stats_file, datastore_params, random_state,
-                                n_burn_in)
+        learner = self.init_learner(stats_path, datastore_params, random_state,
+                                    n_burn_in)
 
         # Iterate through the generated samples and learn
         t_total = time.time()
@@ -172,8 +172,7 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
 
         learner.stats_worker.stop()
 
-    def init_learner(self, stats_file, datastore_params, random_state,
-                     n_burn_in):
+    def init_learner(self, stats_path, datastore_params, random_state, n_burn_in):
 
         config = self.config
         ilp_params = dict(params_offline_lp=config['offline_lp'],
@@ -181,8 +180,7 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
                           **config['online_lp'])
 
         # Instantiate a worker thread for statistics
-        stats_worker = StatisticsWorker(config=config, isave=self.isave,
-                                        save_file=stats_file)
+        stats_worker = StatisticsWorker(config=config, isave=self.isave, path=stats_path)
 
         # Instantiate a datastore for labeled and unlabeled samples
         datastore = SemiLabeledDataStore(**datastore_params)
@@ -212,10 +210,8 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
             for variable_dir in os.listdir(path):
                 var_value = variable_dir[len(self.name) + 1:]
                 experiment_dir = os.path.join(path, variable_dir)
-                stats_mean, stats_std, config = aggregate_statistics(
-                    experiment_dir)
-                experiment_stats.append((self.name, var_value, stats_mean,
-                                         stats_std))
+                stats_mean, stats_std, config = aggregate_statistics(experiment_dir)
+                experiment_stats.append((self.name, var_value, stats_mean, stats_std))
         else:
             stats_mean, stats_std, config = aggregate_statistics(path)
             experiment_stats = (stats_mean, stats_std)

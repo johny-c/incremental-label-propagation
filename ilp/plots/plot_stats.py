@@ -8,6 +8,7 @@ from tabulate import tabulate
 
 from ilp.helpers.params_parse import print_config
 from ilp.helpers.data_fetcher import fetch_load_data
+from ilp.helpers.stats import STATS_FILE_EXT
 
 
 COLORS = ['red', 'darkorange', 'black', 'green', 'cyan', 'blue']
@@ -630,12 +631,11 @@ def plot_standard(single_run, single_var, stats, config, title, path):
     fig.subplots_adjust(top=0.9)
 
     if path is not None:
-        ori = 'landscape'
-        if path.endswith('.stat'):
-            path = path[:-5]
+        if path.endswith(STATS_FILE_EXT):
+            path = path[:-len(STATS_FILE_EXT)]
 
         try:
-            fig.savefig(path + '.pdf', orientation=ori, transparent=False)
+            fig.savefig(path + '.pdf', orientation='landscape', transparent=False)
         except RuntimeError as e:
             print('Cannot save figure due to: \n{}'.format(e))
 

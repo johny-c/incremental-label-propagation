@@ -7,7 +7,7 @@ from sklearn.preprocessing import normalize
 from ilp.algo.knn_graph_utils import construct_weight_mat
 from ilp.algo.knn_sl_graph import KnnSemiLabeledGraph
 from ilp.helpers.stats import JobType
-from ilp.helpers.log import create_logger
+from ilp.helpers.log import make_logger
 
 
 class IncrementalLabelPropagation:
@@ -91,7 +91,7 @@ class IncrementalLabelPropagation:
         self.n_jobs = n_jobs
         self.stats_worker = stats_worker
         self.iprint = iprint
-        self.logger = create_logger(__name__)
+        self.logger = make_logger(__name__)
 
     def fit_burn_in(self):
         """Fit a semi-supervised label propagation model
@@ -346,10 +346,10 @@ class IncrementalLabelPropagation:
 
         return self
 
-    def log_stats(self, jobtype, **kwargs):
-        d = dict(job=jobtype)
+    def log_stats(self, job_type, **kwargs):
+        d = dict(job_type=job_type)
         d.update(**kwargs)
-        self.stats_worker.jobs.put_nowait(d)
+        self.stats_worker.send(d)
 
     def _propagate_single(self, ind_new, y_new, return_iter=False):
         """Perform label propagation until convergence of the label

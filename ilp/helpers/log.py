@@ -2,7 +2,7 @@ import sys
 import logging
 
 
-def create_logger(name, path=None):
+def make_logger(name, path=None):
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     stream_handler = logging.StreamHandler(stream=sys.stdout)

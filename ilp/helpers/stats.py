@@ -8,13 +8,15 @@ from enum import Enum
 from queue import Queue
 
 from ilp.constants import EPS_32, EPS_64, STATS_DIR
-from ilp.helpers.log import create_logger
+from ilp.helpers.log import make_logger
+
+
+STATS_FILE_EXT = '.stat'
 
 
 class JobType(Enum):
     EVAL = 1
     ONLINE_ITER = 3
-    LABELED_SAMPLE = 5
     PRINT_STATS = 6
     LABEL_STREAM = 9
     TRAIN_PRED = 11
@@ -24,106 +26,128 @@ class JobType(Enum):
 
 
 class StatisticsWorker:
+    """
+    Parameters
+    ----------
 
-    def __init__(self, config, save_file=None, jobs=None, results=None,
-                isave=1, iprint=1000):
+    config : dict
+        Dictionary with configuration key-value pairs of the running experiment.
 
-        self.logger = create_logger(__name__)
-        if save_file is None:
+    path : str, optional
+        File path to save the aggregated statistics (default=None).
+
+    isave : int, optional
+        The frequency of saving statistics (default=1000).
+
+
+    Attributes
+    ----------
+
+    _stats : Statistics
+        Class to store different kinds of statistics during an experiment run.
+
+    _jobs : Queue
+        Queue of jobs to process in a different thread.
+
+    _thread : Thread
+        Thread in which to process incoming jobs.
+
+    """
+
+    def __init__(self, config, path=None, isave=1):
+        if path is None:
             cur_time = datetime.now().strftime('%d%m%Y-%H%M%S')
             dataset_name = config['dataset']['name']
-            filename = 'stats_' + cur_time + '_' + str(dataset_name) + '.stat'
-            save_file = os.path.join(STATS_DIR, filename)
-        elif not save_file.endswith('.stat'):
-            save_file = save_file + '.stat'
+            filename = 'stats_' + cur_time + '_' + str(dataset_name) + STATS_FILE_EXT
+            path = os.path.join(STATS_DIR, filename)
+        elif not path.endswith(STATS_FILE_EXT):
+            path = path + STATS_FILE_EXT
 
-        os.makedirs(os.path.split(save_file)[0], exist_ok=True)
-        self.save_file = save_file
+        os.makedirs(os.path.split(path)[0], exist_ok=True)
+        self.path = path
         self.config = config
-        self.stats = Statistics()
-        if jobs is None:
-            jobs = Queue()
-        self.jobs = jobs
-        if results is None:
-            results = Queue()
-        self.results = results
-        self.thread = Thread(target=self.work)
         self.isave = isave
-        self.iprint = iprint
+        self._stats = Statistics()
+        self._jobs = Queue()
+        self._thread = Thread(target=self.work)
+        self.logger = make_logger(__name__)
 
     def start(self):
         self.n_iter_eval = 0
-        self.thread.start()
+        self._thread.start()
 
     def save(self):
-        prev_file = self.save_file + '_iter_' + str(self.n_iter_eval)
-        if os.path.exists(self.save_file):
-            os.rename(self.save_file, prev_file)
-        with shelve.open(self.save_file, 'c') as shelf:
-            shelf['stats'] = self.stats.__dict__
+        prev_file = self.path + '_iter_' + str(self.n_iter_eval)
+        if os.path.exists(self.path):
+            os.rename(self.path, prev_file)
+        with shelve.open(self.path, 'c') as shelf:
+            shelf['stats'] = self._stats.__dict__
             shelf['config'] = self.config
         if os.path.exists(prev_file):
             os.remove(prev_file)
 
     def stop(self):
-        self.jobs.put_nowait({'job': JobType.PRINT_STATS})
-        self.jobs.put(None)
-        self.thread.join()
+        self._jobs.put_nowait({'job_type': JobType.PRINT_STATS})
+        self._jobs.put(None)
+        self._thread.join()
         self.save()
+
+    def send(self, d):
+        self._jobs.put_nowait(d)
 
     def work(self):
         while True:
-            job = self.jobs.get()
+            job = self._jobs.get()
 
             if job is None:  # End of algorithm
-                self.jobs.task_done()
+                self._jobs.task_done()
                 break
 
-            job_type = job['job']
+            job_type = job['job_type']
 
             if job_type == JobType.EVAL:
-                self.stats.evaluate(job['y_est'], job['y_true'])
+                self._stats.evaluate(job['y_est'], job['y_true'])
                 self.n_iter_eval += 1
             elif job_type == JobType.LABEL_STREAM:
-                self.stats.label_stream_true = job['y_true']
-                self.stats.label_stream_mask_observed = job['mask_obs']
+                self._stats.label_stream_true = job['y_true']
+                self._stats.label_stream_mask_observed = job['mask_obs']
             elif job_type == JobType.POINT_PREDICTION:
                 f = job['vec']
-                h = self.stats.entropy(f)
-                self.stats.entropy_point_after.append(h)
+                h = self._stats.entropy(f)
+                self._stats.entropy_point_after.append(h)
                 y = job['y']
-                self.stats.pred_point_after.append(y)
-                self.stats.conf_point_after.append(f.max())
+                self._stats.pred_point_after.append(y)
+                self._stats.conf_point_after.append(f.max())
             elif job_type == JobType.ONLINE_ITER:
-                self.stats.iter_online_count.append(job['n_in_iter'])
-                self.stats.iter_online_duration.append(job['dt'])
+                self._stats.iter_online_count.append(job['n_in_iter'])
+                self._stats.iter_online_duration.append(job['dt'])
             elif job_type == JobType.PRINT_STATS:
-                err = self.stats.clf_error_mixed[-1] * 100
+                err = self._stats.clf_error_mixed[-1] * 100
                 self.logger.info('Classif. Error: {:5.2f}%\n\n'.format(err))
             elif job_type == JobType.TRAIN_PRED:
-                self.stats.train_est = job['y_est']
+                self._stats.train_est = job['y_est']
             elif job_type == JobType.TEST_PRED:
                 y_pred_knn = job['y_pred_knn']
-                self.stats.test_pred_knn.append(y_pred_knn)
+                self._stats.test_pred_knn.append(y_pred_knn)
 
                 y_pred_lp = job['y_pred_lp']
-                self.stats.test_pred_lp.append(y_pred_lp)
+                self._stats.test_pred_lp.append(y_pred_lp)
 
-                self.stats.test_true = y_test = job['y_true']
+                self._stats.test_true = y_test = job['y_true']
 
                 err_knn = np.mean(np.not_equal(y_pred_knn, y_test))
                 err_lp = np.mean(np.not_equal(y_pred_lp, y_test))
                 self.logger.info('knn test err: {:5.2f}%'.format(err_knn*100))
                 self.logger.info('ILP test err: {:5.2f}%'.format(err_lp*100))
-                self.stats.test_error_knn.append(err_knn)
-                self.stats.test_error_olp.append(err_lp)
+                self._stats.test_error_knn.append(err_knn)
+                self._stats.test_error_ilp.append(err_lp)
             elif job_type == JobType.RUNTIME:
-                self.stats.runtime = job['t']
+                self._stats.runtime = job['t']
 
             if self.n_iter_eval % self.isave == 0:
                 self.save()
 
-            self.jobs.task_done()
+            self._jobs.task_done()
 
 
 EXCLUDED_METRICS = {'label_stream_true',
@@ -131,7 +155,7 @@ EXCLUDED_METRICS = {'label_stream_true',
                     'n_burn_in',
                     'test_pred_knn', 'test_pred_lp', 'test_true',
                     'train_est', 'runtime',
-                    'conf_point_after', 'test_error_knn', 'test_error_olp'}
+                    'conf_point_after', 'test_error_knn', 'test_error_ilp'}
 
 
 class Statistics:
@@ -141,6 +165,8 @@ class Statistics:
     def __init__(self):
         self.iter_online_count = []
         self.iter_online_duration = []
+
+        # Evaluation after a new point arrives
         self.n_invalid_samples = []
         self.invalid_samples_ratio = []
         self.clf_error_mixed = []
@@ -151,6 +177,8 @@ class Statistics:
         self.cross_ent_valid = []
         self.entropy_pred_mixed = []
         self.entropy_pred_valid = []
+
+        # Defined once
         self.label_stream_true = []
         self.label_stream_mask_observed = []
         self.test_pred_knn = []
@@ -158,7 +186,7 @@ class Statistics:
         self.test_true = []
         self.train_est = []
         self.runtime = np.nan
-        self.test_error_olp = []
+        self.test_error_ilp = []
         self.test_error_knn = []
         self.entropy_point_after = []
         self.pred_point_after = []
@@ -318,11 +346,11 @@ class Statistics:
 def aggregate_statistics(stats_path, metrics=None, excluded_metrics=None):
 
     print('Aggregating statistics from {}'.format(stats_path))
-    if stats_path.endswith('.stat'):
+    if stats_path.endswith(STATS_FILE_EXT):
         list_of_files = [stats_path]
     else:
         list_of_files = [os.path.join(stats_path, f) for f in os.listdir(
-                        stats_path) if f.endswith('.stat')]
+                        stats_path) if f.endswith(STATS_FILE_EXT)]
 
     stats_runs = []
     random_states = []

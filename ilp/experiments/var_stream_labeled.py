@@ -26,12 +26,12 @@ class VarStreamLabeled(BaseExperiment):
 
         ratio_labeled = config['data']['stream']['ratio_labeled']
         save_dir = os.path.join(self.top_dir, 'srl_' + str(ratio_labeled))
-        stats_file = os.path.join(save_dir, 'run_' + str(n_run))
+        stats_path = os.path.join(save_dir, 'run_' + str(n_run))
         self.logger.info('\n\nExperiment: {}, ratio_labeled = {}, run {}...\n'.
               format(self.name.upper(), ratio_labeled, n_run))
         sleep(1)
         self._single_run(X_run, y_run, mask_labeled, n_burn_in,
-                         stats_file, seed_run, X_test, y_test)
+                         stats_path, seed_run, X_test, y_test)
 
     def run(self, dataset_name, random_state=42):
 

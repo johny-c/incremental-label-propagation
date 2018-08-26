@@ -19,8 +19,8 @@ class DefaultRun(BaseExperiment):
                        X_test, y_test, n_run):
 
         cur_time = datetime.now().strftime('%d%m%Y-%H%M%S')
-        stats_file = os.path.join(self.top_dir, 'run_' + cur_time)
-        self._single_run(X_run, y_run, mask_labeled, n_burn_in, stats_file,
+        stats_path = os.path.join(self.top_dir, 'run_' + cur_time)
+        self._single_run(X_run, y_run, mask_labeled, n_burn_in, stats_path,
                          seed_run, X_test, y_test)
 
 
