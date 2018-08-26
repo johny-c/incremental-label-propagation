@@ -19,8 +19,6 @@ class BaseSemiLabeledGraph(six.with_metaclass(ABCMeta)):
     dtype : dtype, optional (default=np.float32)
         Precision in floats, (can also be float16, float64)
 
-
-
     """
 
     def __init__(self, datastore):

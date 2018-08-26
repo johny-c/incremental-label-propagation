@@ -7,10 +7,10 @@ from sklearn.preprocessing import normalize
 from ilp.algo.knn_graph_utils import construct_weight_mat
 from ilp.algo.knn_sl_graph import KnnSemiLabeledGraph
 from ilp.helpers.stats import JobType
-from ilp.helpers.base_class import BaseClass
+from ilp.helpers.log import create_logger
 
 
-class IncrementalLabelPropagation(BaseClass):
+class IncrementalLabelPropagation:
     """
     Parameters
     ----------
@@ -69,8 +69,6 @@ class IncrementalLabelPropagation(BaseClass):
                  theta=0.1, max_iter=30, tol=1e-3,
                  random_state=42, n_jobs=-1, iprint=0):
 
-        super(IncrementalLabelPropagation, self).__init__(name='ILP ')
-
         self.datastore = datastore
         self.max_iter = max_iter
         self.tol = tol
@@ -92,8 +90,8 @@ class IncrementalLabelPropagation(BaseClass):
 
         self.n_jobs = n_jobs
         self.stats_worker = stats_worker
-        self.stats_jobs = stats_worker.jobs
         self.iprint = iprint
+        self.logger = create_logger(__name__)
 
     def fit_burn_in(self):
         """Fit a semi-supervised label propagation model
@@ -322,15 +320,13 @@ class IncrementalLabelPropagation(BaseClass):
 
         # Update statistics
         dt = time() - tic
-        d = {'job': JobType.ONLINE_ITER, 'dt': dt, 'n_in_iter': n_in_iter}
-        self.stats_jobs.put_nowait(d)
+        self.log_stats(JobType.ONLINE_ITER, dt=dt, n_in_iter=n_in_iter)
 
         if not labeled:
             # Track prediction entropy and accuracy
             label_vec = self.y_unlabeled[ind_new][None, :]
             pred = self.datastore.inverse_transform_labels(label_vec)
-            d = {'job': JobType.POINT_PREDICTION, 'vec': label_vec, 'y': pred}
-            self.stats_jobs.put_nowait(d)
+            self.log_stats(JobType.POINT_PREDICTION, vec=label_vec, y=pred)
 
         # Print information if needed
         if self.n_iter_online % self.iprint == 0:
@@ -342,13 +338,18 @@ class IncrementalLabelPropagation(BaseClass):
                               format(n_samples_prev, n_samples_curr,
                                      max_samples, dt))
             self.tic_iprint = time()
-            self.stats_jobs.put_nowait({'job': JobType.PRINT_STATS})
+            self.log_stats(JobType.PRINT_STATS)
 
         # Normalize y_u as it might have diverged from [0, 1]
         u = self.graph.n_unlabeled
         normalize(self.y_unlabeled[:u], norm='l1', axis=1, copy=False)
 
         return self
+
+    def log_stats(self, jobtype, **kwargs):
+        d = dict(job=jobtype)
+        d.update(**kwargs)
+        self.stats_worker.jobs.put_nowait(d)
 
     def _propagate_single(self, ind_new, y_new, return_iter=False):
         """Perform label propagation until convergence of the label

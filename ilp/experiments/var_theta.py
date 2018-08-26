@@ -25,7 +25,7 @@ class VarTheta(BaseExperiment):
             params['online_lp']['theta'] = theta
             save_dir = os.path.join(self.top_dir,  'theta_' + str(theta))
             stats_file = os.path.join(save_dir, 'run_' + str(n_run))
-            print('\n\nExperiment: {}, theta = {}, run {}...\n'.
+            self.logger.info('\n\nExperiment: {}, theta = {}, run {}...\n'.
                   format(self.name.upper(), theta, n_run))
             sleep(1)
             self._single_run(X_run, y_run, mask_labeled, n_burn_in,

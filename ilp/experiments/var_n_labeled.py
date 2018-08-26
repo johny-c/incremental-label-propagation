@@ -2,7 +2,6 @@ import os
 import time
 import numpy as np
 from sklearn.utils.random import check_random_state
-import shelve
 
 from ilp.experiments.base import BaseExperiment
 from ilp.helpers.data_fetcher import fetch_load_data, IS_DATASET_STREAM
@@ -29,7 +28,7 @@ class VarSamplesLabeled(BaseExperiment):
         n_labels = config['data']['n_labels']
         save_dir = os.path.join(self.top_dir, 'n_L_' + str(n_labels))
         stats_file = os.path.join(save_dir, 'run_' + str(n_run))
-        print('\n\nExperiment: {}, n_labels = {}, run {}...\n'.
+        self.logger.info('\n\nExperiment: {}, n_labels = {}, run {}...\n'.
               format(self.name.upper(), n_labels, n_run))
         time.sleep(1)
         self._single_run(X_run, y_run, mask_labeled, n_burn_in,
@@ -48,10 +47,10 @@ class VarSamplesLabeled(BaseExperiment):
 
         for n_run in range(self.n_runs):
             seed_run = random_state * n_run
-            print('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
+            self.logger.info('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
             rng = check_random_state(seed_run)
             if config['dataset']['is_stream']:
-                print('Dataset is a stream. Sampling observed labels.')
+                self.logger.info('Dataset is a stream. Sampling observed labels.')
                 # Just randomly sample ratio_labeled samples for mask_labeled
                 n_burn_in = config['data']['n_burn_in_stream']
                 ratio_labeled = config['data']['stream']['ratio_labeled']
@@ -98,11 +97,6 @@ class VarSamplesLabeled(BaseExperiment):
 
                     self.pre_single_run(X_run, y_run, mask_labeled, n_burn_in,
                                         seed_run, X_test, y_test, n_run)
-
-
-def save_results(path, results):
-    with shelve.open(path, 'c') as shelf:
-        shelf['results'] = results
 
 
 if __name__ == '__main__':

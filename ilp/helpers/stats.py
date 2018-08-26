@@ -8,7 +8,7 @@ from enum import Enum
 from queue import Queue
 
 from ilp.constants import EPS_32, EPS_64, STATS_DIR
-from ilp.helpers.base_class import BaseClass
+from ilp.helpers.log import create_logger
 
 
 class JobType(Enum):
@@ -23,12 +23,12 @@ class JobType(Enum):
     POINT_PREDICTION = 14
 
 
-class StatisticsWorker(BaseClass):
+class StatisticsWorker:
 
     def __init__(self, config, save_file=None, jobs=None, results=None,
-                 name='STAT', isave=1, iprint=1000):
+                isave=1, iprint=1000):
 
-        super(StatisticsWorker, self).__init__(name=name)
+        self.logger = create_logger(__name__)
         if save_file is None:
             cur_time = datetime.now().strftime('%d%m%Y-%H%M%S')
             dataset_name = config['dataset']['name']

@@ -16,6 +16,7 @@ from ilp.algo.incremental_label_prop import IncrementalLabelPropagation
 from ilp.algo.datastore import SemiLabeledDataStore
 from ilp.helpers.data_flow import gen_semilabeled_data, split_labels_rest, split_burn_in_rest
 from ilp.helpers.params_parse import print_config
+from ilp.helpers.log import create_logger
 
 
 class BaseExperiment(six.with_metaclass(ABCMeta)):
@@ -31,13 +32,13 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
         self._setup()
 
     def _setup(self):
-
         self.dataset = self.config['dataset']['name'].lower()
         check_supported_dataset(self.dataset)
         cur_time = datetime.now().strftime('%d%m%Y-%H%M%S')
         self.class_dir = os.path.join(RESULTS_DIR, self.name)
         instance_dir = self.name + '_' + self.dataset.upper() + '_' + cur_time
         self.top_dir = os.path.join(self.class_dir, instance_dir)
+        self.logger = create_logger(__name__)
 
     def run(self, dataset_name, random_state=42):
 
@@ -46,10 +47,10 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
 
         for n_run in range(self.n_runs):
             seed_run = random_state * n_run
-            print('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
+            self.logger.info('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
             rng = check_random_state(seed_run)
             if config['dataset']['is_stream']:
-                print('Dataset is a stream. Sampling observed labels.')
+                self.logger.info('Dataset is a stream. Sampling observed labels.')
                 # Just randomly sample ratio_labeled samples for mask_labeled
                 n_burn_in = config['data']['n_burn_in_stream']
                 ratio_labeled = config['data']['stream']['ratio_labeled']
@@ -99,84 +100,77 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
 
         lb = LabelBinarizer()
         lb.fit(y)
-        print('\n\nLABELS SEEN BY LABEL BINARIZER: {}'.format(lb.classes_))
+        self.logger.info('\n\nLABELS SEEN BY LABEL BINARIZER: {}'.format(lb.classes_))
 
         # Now print configuration for sanity check
         self.config.setdefault('dataset', {})
         self.config['dataset']['classes'] = lb.classes_
         print_config(self.config)
 
-        print('Creating stream generator...')
+        self.logger.info('Creating stream generator...')
         stream_generator = gen_semilabeled_data(X, y, mask_labeled)
 
-        print('Creating one-hot groundtruth...')
+        self.logger.info('Creating one-hot groundtruth...')
         y_u_true_int = y[~mask_labeled]
         y_u_true = np.asarray(lb.transform(y_u_true_int), dtype=self.precision)
 
-        print('Initializing learner...')
+        self.logger.info('Initializing learner...')
         datastore_params = {'precision': self.precision,
                             'max_samples': len(y),
                             'max_labeled': sum(mask_labeled),
                             'classes': lb.classes_}
-        ilp = self.init_learner(stats_file, datastore_params, random_state,
+        learner = self.init_learner(stats_file, datastore_params, random_state,
                                 n_burn_in)
 
         # Iterate through the generated samples and learn
         t_total = time.time()
-        print('Now feeding stream . . .')
+        self.logger.info('Now feeding stream . . .')
         for t, x_new, y_new, is_labeled in stream_generator:
 
             # Pass the new point to the learner
             y_observed = y_new if is_labeled else -1
-            ilp.fit_incremental(x_new, y_observed)
+            learner.fit_incremental(x_new, y_observed)
 
             if t > n_burn_in:
                 # Compute classification error
-                u = ilp.datastore.n_unlabeled
-                y_u = ilp.y_unlabeled[:u]
-                d = {'job': JobType.EVAL, 'y_est': y_u, 'y_true': y_u_true[:u]}
-                ilp.stats_worker.jobs.put_nowait(d)
+                u = learner.datastore.n_unlabeled
+                y_u = learner.y_unlabeled[:u]
+                learner.log_stats(JobType.EVAL, y_est=y_u, y_true=y_u_true[:u])
 
                 # Compute test error every 1000 samples
                 if t % 1000 == 0:
                     if X_test is not None:
-                        print('Now testing . . .')
+                        self.logger.info('Now testing . . .')
                         t_test = time.time()
-                        y_pred_knn, y_pred_lp = ilp.predict(X_test, mode='pair')
+                        y_pred_knn, y_pred_lp = learner.predict(X_test, mode='pair')
                         t_test = time.time() - t_test
-                        print('Testing finished in {}s'.format(t_test))
-                        d = {'job': JobType.TEST_PRED, 'y_pred_knn': y_pred_knn,
-                             'y_pred_lp': y_pred_lp, 'y_true': y_test}
-                        ilp.stats_worker.jobs.put_nowait(d)
+                        self.logger.info('Testing finished in {}s'.format(t_test))
+                        learner.log_stats(JobType.TEST_PRED, y_pred_knn=y_pred_knn,
+                             y_pred_lp=y_pred_lp, y_true=y_test)
 
         # Store the true label stream in statistics
-        d = {'job': JobType.LABEL_STREAM, 'y_true': y,'mask_obs': mask_labeled}
-        ilp.stats_worker.jobs.put_nowait(d)
+        learner.log_stats(JobType.LABEL_STREAM, y_true=y, mask_obs=mask_labeled)
 
-        print('Reached end of generated data.')
+        self.logger.info('Reached end of generated data.')
         total_runtime = time.time() - t_total
-        print('Total time elapsed: {} s'.format(total_runtime))
-
-        d = {'job': JobType.RUNTIME, 't': total_runtime}
-        ilp.stats_worker.jobs.put_nowait(d)
+        self.logger.info('Total time elapsed: {} s'.format(total_runtime))
+        learner.log_stats(JobType.RUNTIME, t=total_runtime)
 
         # Store last predictions in statistics
-        u = ilp.datastore.n_unlabeled
-        y_u = ilp.y_unlabeled[:u]
-        d = {'job': JobType.TRAIN_PRED, 'y_est': y_u, 'y_true': y_u_true[:u]}
-        ilp.stats_worker.jobs.put_nowait(d)
+        u = learner.datastore.n_unlabeled
+        y_u = learner.y_unlabeled[:u]
+        learner.log_stats(JobType.TRAIN_PRED, y_est=y_u, y_true=y_u_true[:u])
 
         if X_test is not None:
-            print('Now testing . . .')
+            self.logger.info('Now testing . . .')
             t_test = time.time()
-            y_pred_knn, y_pred_lp = ilp.predict(X_test, mode='pair')
+            y_pred_knn, y_pred_lp = learner.predict(X_test, mode='pair')
             t_test = time.time() - t_test
-            print('Testing finished in {}s'.format(t_test))
-            d = {'job': JobType.TEST_PRED, 'y_pred_knn': y_pred_knn,
-                 'y_pred_lp': y_pred_lp, 'y_true': y_test}
-            ilp.stats_worker.jobs.put_nowait(d)
+            self.logger.info('Testing finished in {}s'.format(t_test))
+            learner.log_stats(JobType.TEST_PRED, y_pred_knn=y_pred_knn,
+                              y_pred_lp=y_pred_lp, y_true=y_test)
 
-        ilp.stats_worker.stop()
+        learner.stats_worker.stop()
 
     def init_learner(self, stats_file, datastore_params, random_state,
                      n_burn_in):
@@ -194,24 +188,24 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
         datastore = SemiLabeledDataStore(**datastore_params)
 
         # Instantiate the learner
-        ilp = IncrementalLabelPropagation(datastore=datastore, stats_worker=stats_worker,
+        learner = IncrementalLabelPropagation(datastore=datastore, stats_worker=stats_worker,
                                           random_state=random_state, n_burn_in=n_burn_in, **ilp_params)
 
-        return ilp
+        return learner
 
     def load_plot(self, path=None):
         if path is None:
             path = self.top_dir
         elif not os.path.isdir(path):
             # Load and plot the latest experiment
-            print('Experiment Class dir: {}'.format(self.class_dir))
-            print('Experiment subdirs: {}'.format(os.listdir(self.class_dir)))
+            self.logger.info('Experiment Class dir: {}'.format(self.class_dir))
+            self.logger.info('Experiment subdirs: {}'.format(os.listdir(self.class_dir)))
             files_in_class = os.listdir(self.class_dir)
             a_files = [os.path.join(self.class_dir, d) for d in files_in_class]
             list_of_dirs = [d for d in a_files if os.path.isdir(d)]
             path = max(list_of_dirs, key=os.path.getctime)
 
-        print('Collecting statistics from {}'.format(path))
+        self.logger.info('Collecting statistics from {}'.format(path))
         config = None
         if self.multi_var:
             experiment_stats = []

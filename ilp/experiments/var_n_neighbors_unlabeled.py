@@ -27,7 +27,7 @@ class VarNeighborsUnLabeled(BaseExperiment):
             save_dir = os.path.join(self.top_dir,
                                     'k_U_' + str(n_neighbors))
             stats_file = os.path.join(save_dir, 'run_' + str(n_run))
-            print('\n\nExperiment: {}, k_U = {}, run {}...\n'.
+            self.logger.info('\n\nExperiment: {}, k_U = {}, run {}...\n'.
                   format(self.name.upper(), n_neighbors, n_run))
             time.sleep(1)
             self._single_run(X_run, y_run, mask_labeled, n_burn_in,
