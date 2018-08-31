@@ -38,8 +38,8 @@ To run an experiment with varying $$\theta$$:
 
 You can set different experiment options in the .yaml files found in the experimens/cfg directory.
 
-#### Warning:
-The included experiment scripts produce a lot of statistics during the runs and the resulting files can get very large.
+#### WARNING:
+The included experiment scripts compute and store statistics after every new data point, therefore the resulting output files are very large.
 
 
 ## <a name="paper">Publication</a>
