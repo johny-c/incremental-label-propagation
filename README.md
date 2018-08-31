@@ -1,5 +1,5 @@
 # Incremental Label Propagation
-This repository provides the implementation of our paper "Incremental Semi-Supervised Learning from Streams for Object Classification" (Ioannis Chiotellis*, Franziska Zimmermann*, Daniel Cremers and Rudolph Triebel, IROS 2018). All results presented in our work were produced with this code.
+This repository provides the implementation of our paper ["Incremental Semi-Supervised Learning from Streams for Object Classification"](https://vision.in.tum.de/_media/spezial/bib/chiotellis2018ilp.pdf) (Ioannis Chiotellis*, Franziska Zimmermann*, Daniel Cremers and Rudolph Triebel, IROS 2018). All results presented in our work were produced with this code.
 
 * [Installing](#usage)
 * [Datasets](#data)
