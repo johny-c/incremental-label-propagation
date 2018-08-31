@@ -131,7 +131,7 @@ def fetch_kitti(data_dir=None):
         if file not in os.listdir(data_dir):
             zip_path = os.path.join(data_dir, 'kitti_features.zip')
             target_path = os.path.dirname(zip_path)
-            print(f"Extracting {zip_path} to {target_path} ...")
+            print("Extracting {} to {}...".format(zip_path, target_path))
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(target_path)
             print("Done.")
