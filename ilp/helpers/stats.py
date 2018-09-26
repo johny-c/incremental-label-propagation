@@ -25,6 +25,8 @@ class JobType(Enum):
     POINT_PREDICTION = 14
 
 
+logger = make_logger(__name__)
+
 class StatisticsWorker:
     """
     Parameters
@@ -70,7 +72,6 @@ class StatisticsWorker:
         self._stats = Statistics()
         self._jobs = Queue()
         self._thread = Thread(target=self.work)
-        self.logger = make_logger(__name__)
 
     def start(self):
         self.n_iter_eval = 0
@@ -123,7 +124,7 @@ class StatisticsWorker:
                 self._stats.iter_online_duration.append(job['dt'])
             elif job_type == JobType.PRINT_STATS:
                 err = self._stats.clf_error_mixed[-1] * 100
-                self.logger.info('Classif. Error: {:5.2f}%\n\n'.format(err))
+                logger.info('Classif. Error: {:5.2f}%\n\n'.format(err))
             elif job_type == JobType.TRAIN_PRED:
                 self._stats.train_est = job['y_est']
             elif job_type == JobType.TEST_PRED:
@@ -137,8 +138,8 @@ class StatisticsWorker:
 
                 err_knn = np.mean(np.not_equal(y_pred_knn, y_test))
                 err_lp = np.mean(np.not_equal(y_pred_lp, y_test))
-                self.logger.info('knn test err: {:5.2f}%'.format(err_knn*100))
-                self.logger.info('ILP test err: {:5.2f}%'.format(err_lp*100))
+                logger.info('knn test err: {:5.2f}%'.format(err_knn*100))
+                logger.info('ILP test err: {:5.2f}%'.format(err_lp*100))
                 self._stats.test_error_knn.append(err_knn)
                 self._stats.test_error_ilp.append(err_lp)
             elif job_type == JobType.RUNTIME:
