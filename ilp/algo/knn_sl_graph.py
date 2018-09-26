@@ -161,7 +161,7 @@ class KnnSemiLabeledGraph(BaseSemiLabeledGraph):
         self.subgraph_uu.append_row(ind_new, distances)
         self.subgraph_uu.update_columns(ind_new, distances)
 
-        # Compute distances to all other unlabeled nodes
+        # Compute distances to all labeled nodes
         X_l = self.datastore.X_labeled[:self.n_labeled]
         distances = squared_distances(x_new.reshape(1, -1), X_l, self.L)
 

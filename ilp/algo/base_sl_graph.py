@@ -7,7 +7,8 @@ class BaseSemiLabeledGraph(six.with_metaclass(ABCMeta)):
     Parameters
     ----------
 
-    datastore : datastore
+    datastore : algo.datastore.SemoLabeledDatastore
+        A datastore to store observations as they arrive
 
     max_samples : int, optional (default=1000)
         The maximum number of points expected to be observed. Useful for 

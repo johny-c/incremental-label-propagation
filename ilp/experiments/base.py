@@ -19,6 +19,9 @@ from ilp.helpers.params_parse import print_config
 from ilp.helpers.log import make_logger
 
 
+logger = make_logger(__name__)
+
+
 class BaseExperiment(six.with_metaclass(ABCMeta)):
 
     def __init__(self, name, config, plot_title, multi_var, n_runs, isave=100):
@@ -38,7 +41,6 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
         self.class_dir = os.path.join(RESULTS_DIR, self.name)
         instance_dir = self.name + '_' + self.dataset.upper() + '_' + cur_time
         self.top_dir = os.path.join(self.class_dir, instance_dir)
-        self.logger = make_logger(__name__)
 
     def run(self, dataset_name, random_state=42):
 
@@ -47,10 +49,10 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
 
         for n_run in range(self.n_runs):
             seed_run = random_state * n_run
-            self.logger.info('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
+            logger.info('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
             rng = check_random_state(seed_run)
             if config['dataset']['is_stream']:
-                self.logger.info('Dataset is a stream. Sampling observed labels.')
+                logger.info('Dataset is a stream. Sampling observed labels.')
                 # Just randomly sample ratio_labeled samples for mask_labeled
                 n_burn_in = config['data']['n_burn_in_stream']
                 ratio_labeled = config['data']['stream']['ratio_labeled']
@@ -100,21 +102,21 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
 
         lb = LabelBinarizer()
         lb.fit(y)
-        self.logger.info('\n\nLABELS SEEN BY LABEL BINARIZER: {}'.format(lb.classes_))
+        logger.info('\n\nLABELS SEEN BY LABEL BINARIZER: {}'.format(lb.classes_))
 
         # Now print configuration for sanity check
         self.config.setdefault('dataset', {})
         self.config['dataset']['classes'] = lb.classes_
         print_config(self.config)
 
-        self.logger.info('Creating stream generator...')
+        logger.info('Creating stream generator...')
         stream_generator = gen_semilabeled_data(X, y, mask_labeled)
 
-        self.logger.info('Creating one-hot groundtruth...')
+        logger.info('Creating one-hot groundtruth...')
         y_u_true_int = y[~mask_labeled]
         y_u_true = np.asarray(lb.transform(y_u_true_int), dtype=self.precision)
 
-        self.logger.info('Initializing learner...')
+        logger.info('Initializing learner...')
         datastore_params = {'precision': self.precision,
                             'max_samples': len(y),
                             'max_labeled': sum(mask_labeled),
@@ -124,7 +126,7 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
 
         # Iterate through the generated samples and learn
         t_total = time.time()
-        self.logger.info('Now feeding stream . . .')
+        logger.info('Now feeding stream . . .')
         for t, x_new, y_new, is_labeled in stream_generator:
 
             # Pass the new point to the learner
@@ -140,20 +142,20 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
                 # Compute test error every 1000 samples
                 if t % 1000 == 0:
                     if X_test is not None:
-                        self.logger.info('Now testing . . .')
+                        logger.info('Now testing . . .')
                         t_test = time.time()
                         y_pred_knn, y_pred_lp = learner.predict(X_test, mode='pair')
                         t_test = time.time() - t_test
-                        self.logger.info('Testing finished in {}s'.format(t_test))
+                        logger.info('Testing finished in {}s'.format(t_test))
                         learner.log_stats(JobType.TEST_PRED, y_pred_knn=y_pred_knn,
                              y_pred_lp=y_pred_lp, y_true=y_test)
 
         # Store the true label stream in statistics
         learner.log_stats(JobType.LABEL_STREAM, y_true=y, mask_obs=mask_labeled)
 
-        self.logger.info('Reached end of generated data.')
+        logger.info('Reached end of generated data.')
         total_runtime = time.time() - t_total
-        self.logger.info('Total time elapsed: {} s'.format(total_runtime))
+        logger.info('Total time elapsed: {} s'.format(total_runtime))
         learner.log_stats(JobType.RUNTIME, t=total_runtime)
 
         # Store last predictions in statistics
@@ -162,15 +164,16 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
         learner.log_stats(JobType.TRAIN_PRED, y_est=y_u, y_true=y_u_true[:u])
 
         if X_test is not None:
-            self.logger.info('Now testing . . .')
+            logger.info('Now testing . . .')
             t_test = time.time()
             y_pred_knn, y_pred_lp = learner.predict(X_test, mode='pair')
             t_test = time.time() - t_test
-            self.logger.info('Testing finished in {}s'.format(t_test))
+            logger.info('Testing finished in {}s'.format(t_test))
             learner.log_stats(JobType.TEST_PRED, y_pred_knn=y_pred_knn,
                               y_pred_lp=y_pred_lp, y_true=y_test)
 
-        learner.stats_worker.stop()
+        if learner.stats_worker is not None:
+            learner.stats_worker.stop()
 
     def init_learner(self, stats_path, datastore_params, random_state, n_burn_in):
 
@@ -196,14 +199,14 @@ class BaseExperiment(six.with_metaclass(ABCMeta)):
             path = self.top_dir
         elif not os.path.isdir(path):
             # Load and plot the latest experiment
-            self.logger.info('Experiment Class dir: {}'.format(self.class_dir))
-            self.logger.info('Experiment subdirs: {}'.format(os.listdir(self.class_dir)))
+            logger.info('Experiment Class dir: {}'.format(self.class_dir))
+            logger.info('Experiment subdirs: {}'.format(os.listdir(self.class_dir)))
             files_in_class = os.listdir(self.class_dir)
             a_files = [os.path.join(self.class_dir, d) for d in files_in_class]
             list_of_dirs = [d for d in a_files if os.path.isdir(d)]
             path = max(list_of_dirs, key=os.path.getctime)
 
-        self.logger.info('Collecting statistics from {}'.format(path))
+        logger.info('Collecting statistics from {}'.format(path))
         config = None
         if self.multi_var:
             experiment_stats = []

@@ -10,18 +10,19 @@ from ilp.helpers.stats import JobType
 from ilp.helpers.log import make_logger
 
 
+logger = make_logger(__name__)
+
+
 class IncrementalLabelPropagation:
     """
     Parameters
     ----------
 
-    kernel : string, optional
-        The kind of kernel to use during graph construction.
-        Can be either 'knn' or 'rbf'. (default: 'knn')
+    datastore : algo.datastore.SemiLabeledDataStore
+        A datastore instance to store observations as they arrive
 
-    gamma : float, optional
-        If 'rbf' kernel is used, this is equivalent to the inverse of the
-        length scale. (1/sigma ** 2)
+    stats_worker : helper.stats.StatisticsWorker, optional
+        A statistics computing unit (run in a separate thread)
 
     theta : float, optional
         The threshold of significance for a label update (defines the online nature of the algorithm). (default: 0.1)
@@ -47,9 +48,6 @@ class IncrementalLabelPropagation:
 
     iprint : integer, optional
         The n_labeled_freq of printing progress messages to stdout.
-
-    isave : integer, optional
-        The n_labeled_freq of saving statistics.
 
     n_jobs : integer, optional
         The number of CPUs to use to do the OVA (One Versus All, for
@@ -91,7 +89,6 @@ class IncrementalLabelPropagation:
         self.n_jobs = n_jobs
         self.stats_worker = stats_worker
         self.iprint = iprint
-        self.logger = make_logger(__name__)
 
     def fit_burn_in(self):
         """Fit a semi-supervised label propagation model
@@ -117,12 +114,12 @@ class IncrementalLabelPropagation:
 
         self.n_iter_online = 0
         self.n_burn_in_ = self.datastore.get_n_samples()
-        self.logger.debug('FITTING BURN-IN WITH {} SAMPLES'.format(self.n_burn_in_))
+        logger.debug('FITTING BURN-IN WITH {} SAMPLES'.format(self.n_burn_in_))
 
         # actual graph construction (implementations should override this)
-        self.logger.debug('Building graph....')
+        logger.debug('Building graph....')
         self.graph.build(self.get_X_l(), self.get_X_u())
-        self.logger.debug('Graph built.')
+        logger.debug('Graph built.')
 
         u_max = self.datastore.max_samples
         # Initialize F_U with uniform label vectors
@@ -188,7 +185,7 @@ class IncrementalLabelPropagation:
 
         u, l = self.graph.n_unlabeled, self.graph.n_labeled
 
-        self.logger.info('Now testing on {} samples...'.format(len(X)))
+        logger.info('Now testing on {} samples...'.format(len(X)))
         neighbors, distances = self.graph.find_labeled_neighbors(X)
         affinity_mat = construct_weight_mat(neighbors, distances,
                                             (X.shape[0], l), self.graph.dtype)
@@ -202,7 +199,7 @@ class IncrementalLabelPropagation:
         y_from_unlabeled = ssdot(p_tu, self.y_unlabeled[:u], True)
 
         y_pred_proba = y_from_labeled + y_from_unlabeled
-        self.logger.info('Labels have been predicted.')
+        logger.info('Labels have been predicted.')
 
         if mode is None:
             return y_pred_proba
@@ -224,7 +221,7 @@ class IncrementalLabelPropagation:
         tic = time()
         self.graph.build(self.get_X_l(), self.get_X_u())
         toc = time()
-        self.logger.info('Reconstructed graph in {:.4f}s\n'.format(toc-tic))
+        logger.info('Reconstructed graph in {:.4f}s\n'.format(toc-tic))
 
     def _offline_lp(self, return_iter=False, max_iter=30, tol=0.001):
         """Perform the offline label propagation until convergence of the label 
@@ -242,7 +239,7 @@ class IncrementalLabelPropagation:
             the new label estimates and optionally the number of iterations
         """
 
-        self.logger.debug('Doing Offline LP...')
+        logger.debug('Doing Offline LP...')
 
         u, l = self.graph.n_unlabeled, self.graph.n_labeled
 
@@ -264,7 +261,7 @@ class IncrementalLabelPropagation:
 
             converged = _converged(y_unlabeled, y_unlabeled_prev, tol)
 
-        self.logger.info('Offline LP took {} iterations'.format(n_iter))
+        logger.info('Offline LP took {} iterations'.format(n_iter))
 
         if return_iter:
             return y_unlabeled, n_iter
@@ -274,16 +271,16 @@ class IncrementalLabelPropagation:
     def fit_incremental(self, x_new, y_new):
 
         n_samples = self.datastore.get_n_samples()
-        if n_samples == 0:
-            self.logger.info('\n\nStarting the Statistics Worker\n\n')
+        if n_samples == 0 and self.stats_worker is not None:
+            logger.info('\n\nStarting the Statistics Worker\n\n')
             self.stats_worker.start()
 
         if n_samples < self.n_burn_in:
-            self.logger.debug('Still in burn-in phase... observed {:>4} '
+            logger.debug('Still in burn-in phase... observed {:>4} '
                               'points'.format(n_samples))
             self.datastore.append(x_new, y_new)
             if n_samples == self.n_burn_in - 1:
-                self.logger.debug('Burn-in complete!')
+                logger.debug('Burn-in complete!')
                 self.fit_burn_in()
         else:
             ind_new = self.datastore.append(x_new, y_new)
@@ -334,7 +331,7 @@ class IncrementalLabelPropagation:
             max_samples = self.datastore.max_samples
             n_samples_curr = self.graph.get_n_nodes()
             n_samples_prev = n_samples_curr - self.iprint
-            self.logger.info('Iterations {} to {}/{} took {:.4f}s'.
+            logger.info('Iterations {} to {}/{} took {:.4f}s'.
                               format(n_samples_prev, n_samples_curr,
                                      max_samples, dt))
             self.tic_iprint = time()
@@ -347,9 +344,10 @@ class IncrementalLabelPropagation:
         return self
 
     def log_stats(self, job_type, **kwargs):
-        d = dict(job_type=job_type)
-        d.update(**kwargs)
-        self.stats_worker.send(d)
+        if self.stats_worker is not None:
+            d = dict(job_type=job_type)
+            d.update(**kwargs)
+            self.stats_worker.send(d)
 
     def _propagate_single(self, ind_new, y_new, return_iter=False):
         """Perform label propagation until convergence of the label
@@ -427,7 +425,7 @@ class IncrementalLabelPropagation:
         # Print the total number of updates
         n_updates = sum(n_updates_per_iter)
         if n_updates:
-            self.logger.info('Iter {:6}: {:6} updates in {:2} LP iters, '
+            logger.info('Iter {:6}: {:6} updates in {:2} LP iters, '
                              'max_iter = {:2}'
                 .format(self.n_iter_online, n_updates, n_iter, max_iter))
 
