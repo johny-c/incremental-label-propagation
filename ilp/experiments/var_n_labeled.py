@@ -8,6 +8,10 @@ from ilp.helpers.data_fetcher import fetch_load_data, IS_DATASET_STREAM
 from ilp.helpers.params_parse import parse_yaml, experiment_arg_parser
 from ilp.constants import CONFIG_DIR
 from ilp.helpers.data_flow import split_labels_rest, split_burn_in_rest
+from ilp.helpers.log import make_logger
+
+
+logger = make_logger(__name__)
 
 
 class VarSamplesLabeled(BaseExperiment):
@@ -28,7 +32,7 @@ class VarSamplesLabeled(BaseExperiment):
         n_labels = config['data']['n_labels']
         save_dir = os.path.join(self.top_dir, 'n_L_' + str(n_labels))
         stats_file = os.path.join(save_dir, 'run_' + str(n_run))
-        self.logger.info('\n\nExperiment: {}, n_labels = {}, run {}...\n'.
+        logger.info('\n\nExperiment: {}, n_labels = {}, run {}...\n'.
               format(self.name.upper(), n_labels, n_run))
         time.sleep(1)
         self._single_run(X_run, y_run, mask_labeled, n_burn_in,
@@ -47,10 +51,10 @@ class VarSamplesLabeled(BaseExperiment):
 
         for n_run in range(self.n_runs):
             seed_run = random_state * n_run
-            self.logger.info('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
+            logger.info('\n\nRANDOM SEED = {} for data split.'.format(seed_run))
             rng = check_random_state(seed_run)
             if config['dataset']['is_stream']:
-                self.logger.info('Dataset is a stream. Sampling observed labels.')
+                logger.info('Dataset is a stream. Sampling observed labels.')
                 # Just randomly sample ratio_labeled samples for mask_labeled
                 n_burn_in = config['data']['n_burn_in_stream']
                 ratio_labeled = config['data']['stream']['ratio_labeled']

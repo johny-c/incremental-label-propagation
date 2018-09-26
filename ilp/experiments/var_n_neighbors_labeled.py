@@ -5,6 +5,10 @@ from ilp.experiments.base import BaseExperiment
 from ilp.helpers.data_fetcher import IS_DATASET_STREAM
 from ilp.helpers.params_parse import parse_yaml, experiment_arg_parser
 from ilp.constants import CONFIG_DIR
+from ilp.helpers.log import make_logger
+
+
+logger = make_logger(__name__)
 
 
 class VarNeighborsLabeled(BaseExperiment):
@@ -26,7 +30,7 @@ class VarNeighborsLabeled(BaseExperiment):
             params['graph']['n_neighbors_labeled'] = n_neighbors
             save_dir = os.path.join(self.top_dir,  'k_L_' + str(n_neighbors))
             stats_file = os.path.join(save_dir, 'run_' + str(n_run))
-            self.logger.info('\n\nExperiment: {}, k_L = {}, run {}...\n'.
+            logger.info('\n\nExperiment: {}, k_L = {}, run {}...\n'.
                   format(self.name.upper(), n_neighbors, n_run))
             time.sleep(1)
             self._single_run(X_run, y_run, mask_labeled, n_burn_in,
